@@ -3,7 +3,7 @@ import mujoco.viewer
 import numpy as np
 import time
 
-model_path = "/home/emanuele/mujoco_menagerie/unitree_go1/scene.xml"
+model_path = "/home/emanuele/mujoco_menagerie/unitree_go1/Go1_Emotions/scene.xml"
 
 print(f"Caricamento: {model_path}")
 model = mujoco.MjModel.from_xml_path(model_path)

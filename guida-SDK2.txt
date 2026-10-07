@@ -1,0 +1,31 @@
+Questa guida configura l'ambiente per inviare comandi reali ai motori del Go1 fisico tramite la rete.
+
+
+
+Passo 1: Clonazione del repository ufficiale
+Posizionati nella home directory e scarica l'SDK Python ufficiale di Unitree Robotics.
+cd ~
+git clone https://github.com/unitreerobotics/unitree_sdk2_python.git
+
+
+Passo 2: Installazione delle dipendenze e del pacchetto
+Entra nella directory appena creata, attiva l'ambiente virtuale (puoi riutilizzare quello esistente o crearne uno nuovo) e installa il pacchetto in modalità "editable". Questa modalità è fondamentale perché permette di modificare i file sorgente dell'SDK e vedere le modifiche immediatamente senza reinstallare.
+cd ~/unitree_sdk2_python
+source venv/bin/activate
+pip install -e .
+
+
+Passo 3: Verifica dell'importazione
+Conferma che Python riesca a trovare e caricare correttamente il modulo dell'SDK.
+python3 -c "import unitree_sdk2py; print('Unitree SDK2 Python importato correttamente')"
+
+
+Passo 4: Configurazione di rete preliminare
+Per comunicare con il robot fisico, il tuo computer deve essere sulla stessa rete del Go1. Collega il cavo Ethernet direttamente al robot o assicurati che entrambi siano connessi allo stesso switch.
+ 
+L'indirizzo IP predefinito del Go1 è solitamente 192.168.123.10. Puoi verificare la connessione eseguendo un ping dal terminale:
+ping 192.168.123.10
+
+Se il ping ha successo, l'ambiente è pronto per eseguire gli script di controllo posizione, velocità o coppia sul robot fisico.
+
+Salva queste guide in un file di testo nel tuo progetto, ad esempio INSTALLAZIONE.md, così avrai sempre un riferimento rapido e pulito per ripristinare l'ambiente in futuro.

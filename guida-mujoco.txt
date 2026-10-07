@@ -1,0 +1,38 @@
+Questa guida configura l'ambiente di simulazione per testare le pose e le logiche di controllo del Go1 in totale sicurezza.
+
+
+
+Passo 1: Creazione e attivazione dell'ambiente virtuale
+Apri il terminale ed esegui i seguenti comandi per creare un ambiente isolato.
+cd ~
+python3 -m venv mujoco_venv
+source ~/mujoco_venv/bin/activate
+
+
+Passo 2: Installazione delle librerie Python
+Installa il motore fisico MuJoCo e le dipendenze necessarie per la gestione degli array e della webcam.
+pip install mujoco numpy opencv-python deepface
+
+
+Passo 3: Clonazione del repository Menagerie
+Scarica la raccolta ufficiale di modelli di Google DeepMind, che include il Go1 già configurato con masse, inerzie e geometrie di collisione corrette.
+cd ~
+git clone https://github.com/google-deepmind/mujoco_menagerie.git
+
+
+Passo 4: Modifica del modello Go1 per i fari
+Per rendere visivi i fari sulla testa del robot, dobbiamo aggiungere due geometrie sferiche al file XML originale.
+Apri il file con un editor di testo:
+nano ~/mujoco_menagerie/unitree_go1/go1.xml
+
+Cerca la riga che contiene <site name="head". Subito dopo questa riga, incolla il seguente blocco di codice:
+<light name="headlight" pos="0.3 0 0.1" dir="1 0 -0.5" cutoff="90" exponent="10" diffuse="2 2 1.5" specular="1 1 1" ambient="0.3 0.3 0.3"/>
+<geom name="headlight_left" type="sphere" size="0.015" pos="0.28 0.08 0.05" rgba="0.5 0.5 0.5 1" group="1"/>
+<geom name="headlight_right" type="sphere" size="0.015" pos="0.28 -0.08 0.05" rgba="0.5 0.5 0.5 1" group="1"/>
+
+Salva il file e chiudi l'editor. Il colore grigio di base verrà poi sovrascritto a bianco dal codice Python quando l'emozione "felicità" sarà attiva.
+
+
+Passo 5: Verifica dell'installazione
+Esegui questo comando per confermare che MuJoCo riesca a caricare il modello senza errori.
+python3 -c "import mujoco; m = mujoco.MjModel.from_xml_path('/home/emanuele/mujoco_menagerie/unitree_go1/scene.xml'); print('MuJoCo e Menagerie pronti. Geom totali:', m.ngeom)"
