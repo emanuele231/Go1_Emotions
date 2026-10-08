@@ -44,16 +44,12 @@ while True:
             if isinstance(result, list):
                 result = result[0]
             
-            # Estrai informazioni
+            # Estrai informazioni (rileviamo solo il sorriso, tutto il resto e neutro)
             dominant = result['dominant_emotion']
-            emotions = result['emotion']
-            
-            # Stampa risultato formattato
-            print(f"\n[{time.strftime('%H:%M:%S')}] Emozione: {dominant.upper()}")
-            print("-" * 40)
-            for emo, score in emotions.items():
-                bar = "█" * int(score / 5)
-                print(f"  {emo:10s}: {score:5.2f}% {bar}")
+            if dominant == 'happy':
+                print(f"\n[{time.strftime('%H:%M:%S')}] >>> STATO: FELICE (Happy) <<<")
+            else:
+                print(f"\n[{time.strftime('%H:%M:%S')}] STATO: Neutro/Altro ({dominant})")
             
             last_analysis_time = current_time
             
