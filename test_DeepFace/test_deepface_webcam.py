@@ -46,10 +46,19 @@ while True:
             
             # Estrai informazioni (rileviamo solo il sorriso, tutto il resto e neutro)
             dominant = result['dominant_emotion']
+            emotions = result['emotion']  # Dizionario con tutte le percentuali
+            
+            # Estraiamo le percentuali specifiche (usiamo .get per sicurezza)
+            happy_score = emotions.get('happy', 0.0)
+            sad_score = emotions.get('sad', 0.0)
+            
             if dominant == 'happy':
                 print(f"\n[{time.strftime('%H:%M:%S')}] >>> STATO: FELICE (Happy) <<<")
             else:
                 print(f"\n[{time.strftime('%H:%M:%S')}] STATO: Neutro/Altro ({dominant})")
+            
+            print(f"\n[{time.strftime('%H:%M:%S')}] Emozione dominante: {dominant.upper()}")
+            print(f"  -> HAPPY: {happy_score:5.2f}%  |  SAD: {sad_score:5.2f}%")
             
             last_analysis_time = current_time
             
