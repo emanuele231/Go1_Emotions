@@ -4,6 +4,34 @@
   <img src="go1.png" width="400">
 </p>
 
+## UniTree Go1 panoramica
+
+### L'App Ufficiale Unitree (iOS / Android)
+È l'interfaccia primaria e più user-friendly. Si connette al robot tramite Wi-Fi diretto o hotspot.
+
+**Modalità Sport (Sport Mode)**: È il "cuore" del Go1. Con un tocco, il robot si alza da terra e si bilancia automaticamente.
+Da qui in poi, l'utente non controlla i singoli motori, ma dà comandi di direzione (avanti, indietro, ruota) tramite un joystick virtuale.
+**Comandi "Trick" preimpostati**: L'app invia comandi ad alto livello come Sit Down (Seduto), Lie Down (Sdraiato), Recovery Stand (Rialzati se caduto) o Dance. 
+Questi comandi sono gestiti dal Sport Client interno al robot, che utilizza algoritmi complessi (MPC - Model Predictive Control) 
+per calcolare in millisecondi come muovere i 12 motori senza farlo cadere. In simulazione, noi dobbiamo "fingere" di essere questo Sport Client.
+
+I### Il Telecomando Fisico (Remote Controller)
+È il gamepad (simile a quello di una Xbox) che si accoppia via 2.4GHz. È lo strumento che hai usato per i primissimi test.
+**Controllo Tattile**: Offre una precisione che il touchscreen non ha, fondamentale per movimenti fini o per testare la reattività del robot.
+**Pulsanti Dedicati**: Ha tasti fisici per le funzioni critiche: alzarsi, sdraiarsi e, soprattutto, il blocco di emergenza 
+o il ripristino immediato della postura se il robot perde l'equilibrio.
+**Sicurezza**: È il metodo più affidabile per riprendere il controllo manuale se il software personalizzato (SDK) 
+dovesse inviare comandi errati e far cadere il robot.
+
+### I Sensori e il "Tracker" Interno (Propriocezione)
+Il Go1 non è un'auto radiocomandata; sa sempre dove si trova nello spazio grazie ai suoi sensori interni:
+**IMU (Inertial Measurement Unit)**: Un giroscopio e accelerometro ad alta frequenza che dice al robot il suo beccheggio (pitch), 
+rollio (roll) e imbardata (yaw). È il senso dell'equilibrio del robot.
+**Encoder dei Giunti**: Ogni uno dei 12 motori sa esattamente a quale angolo si trova e con quale velocità sta ruotando.
+**Telecamera di Profondità** (opzionale ma comune): Sul muso, usata dall'app per l'evitamento ostacoli e per la mappatura dell'ambiente.
+Il nostro script MuJoCo legge data.qpos (posizione) e data.qvel (velocità) per emulare esattamente i dati che questi sensori fisici inviano al cervello del robot.
+
+
 ## Il Motore Fisico e l'Ambiente di Simulazione
 
 ### MuJoCo (Multi-Joint dynamics with Contact)
