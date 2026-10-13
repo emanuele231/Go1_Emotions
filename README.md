@@ -4,7 +4,7 @@
   <img src="go1.png" width="400">
 </p>
 
-## UniTree Go1 panoramica
+## 1- UniTree Go1 panoramica
 
 ### L'App Ufficiale Unitree (iOS / Android)
 È l'interfaccia primaria e più user-friendly. Si connette al robot tramite Wi-Fi diretto o hotspot.
@@ -15,7 +15,7 @@ Da qui in poi, l'utente non controlla i singoli motori, ma dà comandi di direzi
 Questi comandi sono gestiti dal Sport Client interno al robot, che utilizza algoritmi complessi (MPC - Model Predictive Control) 
 per calcolare in millisecondi come muovere i 12 motori senza farlo cadere. In simulazione, noi dobbiamo "fingere" di essere questo Sport Client.
 
-I### Il Telecomando Fisico (Remote Controller)
+### Il Telecomando Fisico (Remote Controller)
 È il gamepad (simile a quello di una Xbox) che si accoppia via 2.4GHz. È lo strumento che hai usato per i primissimi test.
 **Controllo Tattile**: Offre una precisione che il touchscreen non ha, fondamentale per movimenti fini o per testare la reattività del robot.
 **Pulsanti Dedicati**: Ha tasti fisici per le funzioni critiche: alzarsi, sdraiarsi e, soprattutto, il blocco di emergenza 
@@ -32,7 +32,17 @@ rollio (roll) e imbardata (yaw). È il senso dell'equilibrio del robot.
 Il nostro script MuJoCo legge data.qpos (posizione) e data.qvel (velocità) per emulare esattamente i dati che questi sensori fisici inviano al cervello del robot.
 
 
-## Il Motore Fisico e l'Ambiente di Simulazione
+## 2 - Il Ponte verso il Codice: Unitree SDK (C++ e Python)
+Qui è dove l'utente diventa sviluppatore. L'SDK (Software Development Kit) di Unitree si divide in due livelli di controllo fondamentali:
+**High-Level Control (Sport Mode API)**:
+Tu invii comandi astratti come client.StandUp(), client.SitDown(), o client.SetWalkSpeed(0.5, 0, 0).
+Il computer di bordo del Go1 fa tutto il lavoro pesante di bilanciamento. Questo è il metodo più sicuro e consigliato per il tuo progetto.
+**Low-Level Control (Motor API)**:
+  Tu invii comandi diretti a ogni singolo motore: Posizione (P), Velocità (V) e Coppia/Torque (T). 
+  È esattamente quello che abbiamo simulato con il nostro controllore PD (KP * errore + KD * velocità). È potentissimo, 
+  ma se sbagli i valori, il robot si ribalta o danneggia i motori.
+  
+## 3 - Il Motore Fisico e l'Ambiente di Simulazione
 
 ### MuJoCo (Multi-Joint dynamics with Contact)
 È il cuore della simulazione. Sviluppato originariamente per la ricerca in robotica e ora mantenuto da Google 
@@ -50,7 +60,7 @@ Abbiamo usato il modello Unitree Go1, già calibrato con i pesi e le dimensioni 
 È l'interfaccia grafica (basata su GLFW) che ci permette di vedere la simulazione in 3D, muovere la telecamera
 e, soprattutto, intercettare gli input da tastiera per i test manuali.
 
-## Lo Stack di Visione e Intelligenza Artificiale
+## 4 - Lo Stack di Visione e Intelligenza Artificiale
 
 ### OpenCV (opencv-python e opencv-contrib-python)
 È la libreria standard per la computer vision.
@@ -85,7 +95,7 @@ Sono richiesti da DeepFace per caricare ed eseguire i modelli di riconoscimento 
 Il problema risolto: È stata la causa principale del nostro "inferno delle dipendenze". TensorFlow, MediaPipe e OpenCV 
 richiedevano versioni di Protobuf incompatibili tra loro. Abbiamo dovuto trovare la versione ponte (4.25.3) per farle convivere.
 
-## Sistema Emozioni (Emotion Vision System)
+## 5 - Sistema Emozioni (Emotion Vision System)
 
 Il robot Go1 implementa un sistema di emozioni reattivo basato su visione artificiale, 
 che combina rilevamento della presenza (Haar Cascade) e riconoscimento delle emozioni facciali (DeepFace). 
