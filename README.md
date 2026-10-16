@@ -62,7 +62,7 @@ e, soprattutto, intercettare gli input da tastiera per i test manuali.
 
 ## 4 - Lo Stack di Visione e Intelligenza Artificiale
 
-### OpenCV (opencv-python e opencv-contrib-python)
+### OpenCV (opencv-python e opencv-contrib-python) (****DA MODIFICARE CON YuNet***)
 È la libreria standard per la computer vision.
  Gestisce l'apertura della webcam, cattura i frame video e li converte in scala di grigi.
 **Haar Cascades**: Abbiamo usato i classificatori Haar (file .xml di OpenCV) per il rilevamento veloce e leggero dei volti. 
