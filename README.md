@@ -124,3 +124,11 @@ il sistema non reagisce in modo nervoso: attende qualche secondo per poi "accasc
 Grazie a un'interpolazione matematica che sincronizza perfettamente l'estensione delle zampe con l'altezza del torso, 
 ogni transizione è priva di scatti meccanici. Il risultato è un robot con una personalità canina, empatica e incredibilmente naturale.
 
+L'intenzione del **saluto** è creare un'interazione naturale ed espressiva, simile a un cane che dà la zampa, 
+mantenendo però un controllo rigoroso per evitare comportamenti robotici nervosi o loop infiniti. 
+Il sistema è progettato per richiedere che l'utente tenga la mano alzata per due secondi consecutivi prima di attivare il gesto,
+filtrando così i movimenti accidentali o i passaggi veloci. Una volta confermato, il robot solleva una zampa anteriore in modo scattante mentre il corpo si assesta dolcemente, garantendo attraverso il calcolo cinematico che le altre tre zampe rimangano perfettamente incollate a terra senza scivolare. 
+Il saluto ha una durata fissa e limitata di tre secondi, dopodiché il robot torna autonomamente alla posa di riposo. 
+Per evitare ripetizioni incontrollate, si attiva immediatamente un blocco di sicurezza che ignora la mano se questa rimane alzata,
+richiedendo all'utente di abbassarla e rialzarla consapevolmente per initiare un nuovo saluto. In questo modo il robot appare educato, reattivo e fisicamente stabile.
+
