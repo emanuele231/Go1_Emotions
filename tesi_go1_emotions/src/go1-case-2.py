@@ -25,7 +25,7 @@ if headlight_left_id == -1 or headlight_right_id == -1:
 mujoco.mj_forward(model, data)
 
 # ============================================================
-# POSE
+# MOVIMENTI
 # ============================================================
 poses = {
     "sad": np.array([
@@ -122,16 +122,8 @@ def change_pose():
     current_emotion = pose_queue.pop()
     target_pose = poses[current_emotion].copy()
     pose_count += 1
-
-    if current_emotion == "sad":
-        model.geom_rgba[headlight_left_id] = [0.0, 0.0, 0.0, 0.0]
-        model.geom_rgba[headlight_right_id] = [0.0, 0.0, 0.0, 0.0]
-    elif current_emotion == "happy" or current_emotion == "playful":
-        model.geom_rgba[headlight_left_id] = [0.0, 0.0, 1.0, 0.0]
-        model.geom_rgba[headlight_right_id] = [0.0, 0.0, 1.0, 0.0]
-    elif current_emotion == "angry": 
-        model.geom_rgba[headlight_left_id] = [1.0, 0.0, 0.0, 0.0]
-        model.geom_rgba[headlight_right_id] = [1.0, 0.0, 0.0, 0.0]      
+    model.geom_rgba[headlight_left_id] = [0.0, 0.0, 0.0, 0.0]
+    model.geom_rgba[headlight_right_id] = [0.0, 0.0, 0.0, 0.0]
     
     transition_start_time = time.perf_counter()
     print(f"\r[{time.strftime('%H:%M:%S')}] >>> Posa {pose_count}/{MAX_POSES-1}    ", end="", flush=True)
