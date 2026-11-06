@@ -1,3 +1,6 @@
+
+#Statico, Luci-on, Closed-World
+
 import mujoco
 import mujoco.viewer
 import numpy as np
@@ -25,7 +28,7 @@ if headlight_left_id == -1 or headlight_right_id == -1:
 mujoco.mj_forward(model, data)
 
 # ============================================================
-# MOVIMENTI
+# POSE STATICHE
 # ============================================================
 poses = {
     "sad": np.array([
@@ -79,13 +82,20 @@ pose_count = 0
 MAX_POSES = 5         
 simulation_finished = False  
 
-
 KP = 20.0
 KD = 0.0
 
 def smoothstep(t):
     t = np.clip(t, 0.0, 1.0)
     return t * t * (3.0 - 2.0 * t)
+
+def update_headlights(color):
+    for geom_id in (headlight_left_id, headlight_right_id):
+        mat_id = model.geom_matid[geom_id]
+        if mat_id != -1:
+            model.mat_rgba[mat_id] = color
+        else:
+            model.geom_rgba[geom_id] = color
 
 def controller(data, model):
     global current_pose, transition_start_time
@@ -122,11 +132,17 @@ def change_pose():
     current_emotion = pose_queue.pop()
     target_pose = poses[current_emotion].copy()
     pose_count += 1
-    model.geom_rgba[headlight_left_id] = [0.0, 0.0, 0.0, 0.0]
-    model.geom_rgba[headlight_right_id] = [0.0, 0.0, 0.0, 0.0]
+
+    # --- LOGICA FARI IN BASE ALL'EMOZIONE ---
+    if current_emotion == "sad":
+        update_headlights([0.0, 0.0, 0.0, 0.0])
+    elif current_emotion == "happy" or current_emotion == "playful":
+        update_headlights([0.0, 1.0, 0.0, 1.0])
+    elif current_emotion == "angry": 
+        update_headlights([1.0, 0.0, 0.0, 1.0])
     
     transition_start_time = time.perf_counter()
-    print(f"\r[{time.strftime('%H:%M:%S')}] >>> Posa {pose_count}/{MAX_POSES-1}    ", end="", flush=True)
+    print(f"\r[{time.strftime('%H:%M:%S')}] >>> Posa {pose_count}/{MAX_POSES-1}: {current_emotion.upper()}    ", end="", flush=True)
 
     if pose_count >= MAX_POSES:
         simulation_finished = True

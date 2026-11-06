@@ -1,3 +1,6 @@
+
+#Statico, Luci-off, Closed-World
+
 import mujoco
 import mujoco.viewer
 import numpy as np
