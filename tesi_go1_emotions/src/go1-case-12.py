@@ -237,8 +237,10 @@ try:
     # LOOP PRINCIPALE
     # ============================================================
     with mujoco.viewer.launch_passive(model, data) as viewer:
-        viewer.cam.distance = 3.0
-        viewer.cam.lookat[:] = [0, 0, 0.2]
+        viewer.cam.distance = 2.0
+        viewer.cam.lookat[:] = [0.35, 0.0, 0.35]
+        viewer.cam.azimuth = 180.0
+        viewer.cam.elevation = -10.0
         
         while viewer.is_running() and not simulation_finished:
             step_start = time.perf_counter()
