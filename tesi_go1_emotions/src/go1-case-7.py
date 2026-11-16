@@ -11,6 +11,11 @@ import termios
 import tty
 import select
 
+RED = "\033[91m"
+GREEN = "\033[92m"
+RESET = "\033[0m"
+last_status = ""
+
 # ============================================================
 # CARICAMENTO MODELLO
 # ============================================================
@@ -19,6 +24,11 @@ print(f"Caricamento: {model_path}")
 model = mujoco.MjModel.from_xml_path(model_path)
 data = mujoco.MjData(model)
 model.opt.iterations = 200
+headlight_left_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, 'headlight_left')
+headlight_right_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, 'headlight_right')
+if headlight_left_id == -1 or headlight_right_id == -1:
+    print("[ERRORE] Fari non trovati nel modello.")
+    exit(1)
 
 
 mujoco.mj_forward(model, data)
@@ -42,9 +52,12 @@ animations = {
             np.array([0.05,  0.6, -1.4,  0.0,  0.8, -1.2,  0.0,  1.0, -1.8,  0.0,  1.0, -1.8]),
             np.array([0.0,  0.8, -1.2,  0.0,  0.8, -1.2,  0.0,  1.0, -1.8,  0.0,  1.0, -1.8]),
             np.array([0.0,  0.8, -1.2, -0.05,  0.6, -1.4,  0.0,  1.0, -1.8,  0.0,  1.0, -1.8]),
+            np.array([0.05,  0.6, -1.4,  0.0,  0.8, -1.2,  0.0,  1.0, -1.8,  0.0,  1.0, -1.8]),
+            np.array([0.0,  0.8, -1.2,  0.0,  0.8, -1.2,  0.0,  1.0, -1.8,  0.0,  1.0, -1.8]),
+            np.array([0.0,  0.8, -1.2, -0.05,  0.6, -1.4,  0.0,  1.0, -1.8,  0.0,  1.0, -1.8]),
             np.array([0.0,  0.8, -1.2,  0.0,  0.8, -1.2,  0.0,  1.0, -1.8,  0.0,  1.0, -1.8]),
         ],
-        "duration": 1.0,  
+        "duration": 2.0,  
     },
     "angry": {
         "keyframes": [
@@ -60,9 +73,12 @@ animations = {
             np.array([0.25,  1.3, -2.4,  0.25,  1.3, -2.4,  0.25,  0.9, -1.5,  0.25,  0.9, -1.5]),
             np.array([0.0,  1.3, -2.4,  0.0,  1.3, -2.4,  0.0,  0.9, -1.5,  0.0,  0.9, -1.5]),
             np.array([-0.25,  1.3, -2.4, -0.25,  1.3, -2.4,  -0.25,  0.9, -1.5,  -0.25,  0.9, -1.5]),
+            np.array([0.25,  1.3, -2.4,  0.25,  1.3, -2.4,  0.25,  0.9, -1.5,  0.25,  0.9, -1.5]),
+            np.array([0.0,  1.3, -2.4,  0.0,  1.3, -2.4,  0.0,  0.9, -1.5,  0.0,  0.9, -1.5]),
+            np.array([-0.25,  1.3, -2.4, -0.25,  1.3, -2.4,  -0.25,  0.9, -1.5,  -0.25,  0.9, -1.5]),
             np.array([0.0,  1.3, -2.4,  0.0,  1.3, -2.4,  0.0,  0.9, -1.5,  0.0,  0.9, -1.5])
         ],
-        "duration": 2.5,
+        "duration": 4.0,
     }
 }
 
@@ -85,9 +101,9 @@ start_pose = neutral_stand_pose.copy()
 transition_start_time = None
 TRANSITION_DURATION = 3.0
 
-# Variabili animazione (una sola volta)
-anim_elapsed = 0.0
-anim_duration = 0.0
+# Variabili animazione 
+anim_elapsed = 1.0
+anim_duration = 1.0
 anim_keyframes = None
 
 last_debug_print = 0.0
@@ -110,10 +126,21 @@ def smoothstep(t):
 
 def controller(data, model):
     global current_pose, start_pose, transition_start_time, current_animation
-    global phase, anim_elapsed, anim_duration, anim_keyframes
+    global phase, anim_elapsed, anim_duration, anim_keyframes, last_status
 
     if current_animation is None:
         return
+    
+    if phase in ("to_neutral", "to_anim"):
+        status = f"{RED}UN ATTIMO!{RESET}"
+    elif phase in ("animating", "idle"):
+        status = f"{GREEN}PRONTO!{RESET}"
+    else:
+        status = f"{RED}STATO SCONOSCIUTO{RESET}"
+
+    if status != last_status:
+        print(f"\r{status}\033[K", end="", flush=True)
+        last_status = status
 
     current_time = data.time
 
@@ -189,6 +216,9 @@ def change_pose():
     anim_duration = animations[current_animation]["duration"]
     pose_count += 1
     
+    model.geom_rgba[headlight_left_id] = [0.0, 0.0, 0.0, 0.0]
+    model.geom_rgba[headlight_right_id] = [0.0, 0.0, 0.0, 0.0]
+    
     # Avvia la sequenza: prima torna a neutral, poi anima
     phase = "to_neutral"
     transition_start_time = None
@@ -211,8 +241,10 @@ old_settings = termios.tcgetattr(sys.stdin)
 try:
     tty.setcbreak(sys.stdin.fileno())
     
-    change_pose()
+    data.qpos[7:19] = neutral_stand_pose
     mujoco.mj_forward(model, data)
+
+    change_pose()
 
     print("\n" + "=" * 50)
     print("  POSE RANDOM GO1 (senza ripetizioni)")
@@ -244,6 +276,10 @@ try:
                last_debug_print = time.perf_counter()
             mujoco.mj_step(model, data)
             viewer.sync()
+            
+            if time.perf_counter() - last_debug_print > 1.0:
+               print(f"\r[DEBUG] Emozione: {current_animation} | Fase: {phase}\033[K", end="", flush=True)
+               last_debug_print = time.perf_counter()
             
             # --- TIMING LOOP ---
             time_until_next_step = model.opt.timestep - (time.perf_counter() - step_start)

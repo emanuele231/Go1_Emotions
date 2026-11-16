@@ -13,6 +13,11 @@ import select
 import cv2
 import math
 
+RED = "\033[91m"
+GREEN = "\033[92m"
+RESET = "\033[0m"
+last_status = ""
+
 # ============================================================
 # CARICAMENTO MODELLO
 # ============================================================
@@ -50,9 +55,12 @@ animations = {
             np.array([0.05,  0.6, -1.4,  0.0,  0.8, -1.2,  0.0,  1.0, -1.8,  0.0,  1.0, -1.8]),
             np.array([0.0,  0.8, -1.2,  0.0,  0.8, -1.2,  0.0,  1.0, -1.8,  0.0,  1.0, -1.8]),
             np.array([0.0,  0.8, -1.2, -0.05,  0.6, -1.4,  0.0,  1.0, -1.8,  0.0,  1.0, -1.8]),
+            np.array([0.05,  0.6, -1.4,  0.0,  0.8, -1.2,  0.0,  1.0, -1.8,  0.0,  1.0, -1.8]),
+            np.array([0.0,  0.8, -1.2,  0.0,  0.8, -1.2,  0.0,  1.0, -1.8,  0.0,  1.0, -1.8]),
+            np.array([0.0,  0.8, -1.2, -0.05,  0.6, -1.4,  0.0,  1.0, -1.8,  0.0,  1.0, -1.8]),
             np.array([0.0,  0.8, -1.2,  0.0,  0.8, -1.2,  0.0,  1.0, -1.8,  0.0,  1.0, -1.8]),
         ],
-        "duration": 1.0,  
+        "duration": 2.0,  
     },
     "angry": {
         "keyframes": [
@@ -68,9 +76,12 @@ animations = {
             np.array([0.25,  1.3, -2.4,  0.25,  1.3, -2.4,  0.25,  0.9, -1.5,  0.25,  0.9, -1.5]),
             np.array([0.0,  1.3, -2.4,  0.0,  1.3, -2.4,  0.0,  0.9, -1.5,  0.0,  0.9, -1.5]),
             np.array([-0.25,  1.3, -2.4, -0.25,  1.3, -2.4,  -0.25,  0.9, -1.5,  -0.25,  0.9, -1.5]),
+            np.array([0.25,  1.3, -2.4,  0.25,  1.3, -2.4,  0.25,  0.9, -1.5,  0.25,  0.9, -1.5]),
+            np.array([0.0,  1.3, -2.4,  0.0,  1.3, -2.4,  0.0,  0.9, -1.5,  0.0,  0.9, -1.5]),
+            np.array([-0.25,  1.3, -2.4, -0.25,  1.3, -2.4,  -0.25,  0.9, -1.5,  -0.25,  0.9, -1.5]),
             np.array([0.0,  1.3, -2.4,  0.0,  1.3, -2.4,  0.0,  0.9, -1.5,  0.0,  0.9, -1.5])
         ],
-        "duration": 2.5,
+        "duration": 4.0,
     }
 }
 
@@ -118,23 +129,35 @@ target_yaw = 0.0
 walk_phase = 0.0
 walk_amplitude = 0.0
 
+reference_cx = None
+
 def smoothstep(t):
     t = np.clip(t, 0.0, 1.0)
     return t * t * (3.0 - 2.0 * t)
 
 def controller(data, model):
     global current_pose, start_pose, transition_start_time, current_animation
-    global phase, anim_elapsed, anim_duration, anim_keyframes
-    global target_yaw, last_target_yaw, walk_phase, walk_amplitude, last_real_time, current_hip_rot
+    global phase, anim_elapsed, anim_duration, anim_keyframes, last_status
+    global target_yaw, last_target_yaw, last_real_time, current_hip_rot
 
     if current_animation is None:
         return
+     
+    if phase in ("to_neutral", "to_anim"):
+        status = f"{RED}UN ATTIMO!{RESET}"
+    elif phase in ("animating", "idle"):
+        status = f"{GREEN}PRONTO!{RESET}"
+    else:
+        status = f"{RED}STATO SCONOSCIUTO{RESET}"
+
+    if status != last_status:
+        print(f"\r{status}\033[K", end="", flush=True)
+        last_status = status
 
     current_real_time = time.perf_counter()
     real_dt = current_real_time - last_real_time
     last_real_time = current_real_time
 
-    # --- GESTIONE ANIMAZIONI ---
     if phase == "to_neutral" or phase == "to_anim":
         if transition_start_time is None:
             transition_start_time = current_real_time
@@ -181,33 +204,18 @@ def controller(data, model):
             frame2 = anim_keyframes[idx + 1]
             current_pose = frame1 + t_smooth * (frame2 - frame1)
 
-    target_yaw_clamped = max(-0.5, min(0.5, target_yaw))
-
-    face_moving = abs(target_yaw - last_target_yaw) > 0.8
-    last_target_yaw = target_yaw
-
+    target_yaw_clamped = max(-0.4, min(0.4, target_yaw))
     hip_error = target_yaw_clamped - current_hip_rot
-    current_hip_rot += hip_error * 0.08
-
-    if face_moving and abs(target_yaw) > 0.015:
-        walk_phase += 10.0 * real_dt  
-        walk_amplitude = 1.0  
+    
+    if abs(target_yaw) < 0.01 and abs(hip_error) < 0.01:
+        current_hip_rot = 0.0
     else:
-        walk_amplitude += (0.0 - walk_amplitude) * 0.2  
+        current_hip_rot += hip_error * 0.03
 
     dynamic_pose = current_pose.copy()
 
     dynamic_pose[0] -= current_hip_rot
     dynamic_pose[3] -= current_hip_rot
-
-    if walk_amplitude > 0.1:
-        swing_1 = math.sin(walk_phase) * walk_amplitude
-        swing_2 = math.sin(walk_phase + math.pi) * walk_amplitude
-
-        dynamic_pose[1] += swing_1 * 1.2 
-        dynamic_pose[2] -= swing_1 * 1.5  
-        dynamic_pose[4] += swing_2 * 1.2  
-        dynamic_pose[5] -= swing_2 * 1.5  
 
     for i in range(model.nu):
         current_q = data.qpos[7 + i]
@@ -288,8 +296,10 @@ old_settings = termios.tcgetattr(sys.stdin)
 try:
     tty.setcbreak(sys.stdin.fileno())
     
-    change_pose()
+    data.qpos[7:19] = neutral_stand_pose
     mujoco.mj_forward(model, data)
+
+    change_pose()
 
     print("\n" + "=" * 50)
     print("  ANIMAZIONI RANDOM + FACE TRACKING")
@@ -300,6 +310,8 @@ try:
     # ============================================================
     # LOOP PRINCIPALE
     # ============================================================
+    tracking_activation_time = time.perf_counter() + 3.0
+    
     with mujoco.viewer.launch_passive(model, data) as viewer:
         viewer.cam.distance = 2.0
         viewer.cam.lookat[:] = [0.35, 0.0, 0.35]
@@ -335,15 +347,24 @@ try:
                         x, y, w_face, h_face = faces[0][:4].astype(int)
                         fx = x + w_face // 2
                         
-                        offset = fx - cx
-                        if abs(offset) <= 50:
+                        if time.perf_counter() < tracking_activation_time:
                             target_yaw = 0.0
+                            if reference_cx is None:
+                                reference_cx = fx
                         else:
-                            target_yaw = -(offset / 50.0) * 0.15
-                        
-                        cv2.line(frame, (cx, cy), (fx, cy), (0, 255, 0), 2)
-                        cv2.circle(frame, (fx, cy), 4, (0, 255, 0), -1)
-                        cv2.rectangle(frame, (x, y), (x + w_face, y + h_face), (255, 0, 0), 2)
+                            if reference_cx is None:
+                                reference_cx = fx
+                                
+                            offset = fx - reference_cx
+                            
+                            if abs(offset) <= 50:
+                                target_yaw = 0.0
+                            else:
+                                target_yaw = -(offset / 50.0) * 0.15
+                            
+                            cv2.line(frame, (cx, cy), (fx, cy), (0, 255, 0), 2)
+                            cv2.circle(frame, (fx, cy), 4, (0, 255, 0), -1)
+                            cv2.rectangle(frame, (x, y), (x + w_face, y + h_face), (255, 0, 0), 2)
                     else:
                         target_yaw = 0.0
                     
@@ -355,7 +376,7 @@ try:
             # --- FISICA E RENDERING ---
             controller(data, model)
             if time.perf_counter() - last_debug_print > 1.0:
-               print(f"[DEBUG] Emozione: {current_animation} | Fase: {phase}", end="\r", flush=True)
+               print(f"\r[DEBUG] Emozione: {current_animation} | Fase: {phase}\033[K", end="", flush=True)
                last_debug_print = time.perf_counter()
             mujoco.mj_step(model, data)
             viewer.sync()

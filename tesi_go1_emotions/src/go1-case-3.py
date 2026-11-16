@@ -11,6 +11,11 @@ import termios
 import tty
 import select
 
+# Serviranno nell'inserimento dei form
+RED = "\033[91m"
+GREEN = "\033[92m"
+RESET = "\033[0m"
+
 # ============================================================
 # CARICAMENTO MODELLO
 # ============================================================
@@ -107,6 +112,7 @@ def controller(data, model):
         current_pose = start_pose + t_smooth * (target_pose - start_pose)
         if t >= 1.0:
             transition_start_time = None
+            print(f"\r{GREEN}PRONTO!{RESET}    ", end="", flush=True)
     else:
         current_pose = target_pose.copy()
     
@@ -143,6 +149,7 @@ def change_pose():
     
     transition_start_time = time.perf_counter()
     print(f"\r[{time.strftime('%H:%M:%S')}] >>> Posa {pose_count}/{MAX_POSES-1}: {current_emotion.upper()}    ", end="", flush=True)
+    print(f"\r{RED}UN ATTIMO!{RESET}    ", end="", flush=True)
 
     if pose_count >= MAX_POSES:
         simulation_finished = True
@@ -162,8 +169,10 @@ old_settings = termios.tcgetattr(sys.stdin)
 try:
     tty.setcbreak(sys.stdin.fileno())
     
-    change_pose()
+    data.qpos[7:19] = neutral_stand_pose
     mujoco.mj_forward(model, data)
+
+    change_pose()
 
     print("\n" + "=" * 50)
     print("  POSE RANDOM GO1 (senza ripetizioni)")

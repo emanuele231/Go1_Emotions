@@ -10,6 +10,11 @@ import termios
 import tty
 import select
 
+RED = "\033[91m"
+GREEN = "\033[92m"
+RESET = "\033[0m"
+last_status = ""
+
 # ============================================================
 # CARICAMENTO MODELLO
 # ============================================================
@@ -46,9 +51,12 @@ animations = {
             np.array([0.05,  0.6, -1.4,  0.0,  0.8, -1.2,  0.0,  1.0, -1.8,  0.0,  1.0, -1.8]),
             np.array([0.0,  0.8, -1.2,  0.0,  0.8, -1.2,  0.0,  1.0, -1.8,  0.0,  1.0, -1.8]),
             np.array([0.0,  0.8, -1.2, -0.05,  0.6, -1.4,  0.0,  1.0, -1.8,  0.0,  1.0, -1.8]),
+            np.array([0.05,  0.6, -1.4,  0.0,  0.8, -1.2,  0.0,  1.0, -1.8,  0.0,  1.0, -1.8]),
+            np.array([0.0,  0.8, -1.2,  0.0,  0.8, -1.2,  0.0,  1.0, -1.8,  0.0,  1.0, -1.8]),
+            np.array([0.0,  0.8, -1.2, -0.05,  0.6, -1.4,  0.0,  1.0, -1.8,  0.0,  1.0, -1.8]),
             np.array([0.0,  0.8, -1.2,  0.0,  0.8, -1.2,  0.0,  1.0, -1.8,  0.0,  1.0, -1.8]),
         ],
-        "duration": 1.0,  
+        "duration": 2.0,  
     },
     "angry": {
         "keyframes": [
@@ -64,9 +72,12 @@ animations = {
             np.array([0.25,  1.3, -2.4,  0.25,  1.3, -2.4,  0.25,  0.9, -1.5,  0.25,  0.9, -1.5]),
             np.array([0.0,  1.3, -2.4,  0.0,  1.3, -2.4,  0.0,  0.9, -1.5,  0.0,  0.9, -1.5]),
             np.array([-0.25,  1.3, -2.4, -0.25,  1.3, -2.4,  -0.25,  0.9, -1.5,  -0.25,  0.9, -1.5]),
+            np.array([0.25,  1.3, -2.4,  0.25,  1.3, -2.4,  0.25,  0.9, -1.5,  0.25,  0.9, -1.5]),
+            np.array([0.0,  1.3, -2.4,  0.0,  1.3, -2.4,  0.0,  0.9, -1.5,  0.0,  0.9, -1.5]),
+            np.array([-0.25,  1.3, -2.4, -0.25,  1.3, -2.4,  -0.25,  0.9, -1.5,  -0.25,  0.9, -1.5]),
             np.array([0.0,  1.3, -2.4,  0.0,  1.3, -2.4,  0.0,  0.9, -1.5,  0.0,  0.9, -1.5])
         ],
-        "duration": 2.5,
+        "duration": 4.0,
     }
 }
 
@@ -119,10 +130,21 @@ def update_headlights(color):
 
 def controller(data, model):
     global current_pose, start_pose, transition_start_time, current_animation
-    global phase, anim_elapsed, anim_duration, anim_keyframes
+    global phase, anim_elapsed, anim_duration, anim_keyframes, last_status
 
     if current_animation is None:
         return
+    
+    if phase in ("to_neutral", "to_anim"):
+        status = f"{RED}UN ATTIMO!{RESET}"
+    elif phase in ("animating", "idle"):
+        status = f"{GREEN}PRONTO!{RESET}"
+    else:
+        status = f"{RED}STATO SCONOSCIUTO{RESET}"
+
+    if status != last_status:
+        print(f"\r{status}\033[K", end="", flush=True)
+        last_status = status
 
     current_time = data.time
 
@@ -224,8 +246,10 @@ old_settings = termios.tcgetattr(sys.stdin)
 try:
     tty.setcbreak(sys.stdin.fileno())
     
-    change_pose()
+    data.qpos[7:19] = neutral_stand_pose
     mujoco.mj_forward(model, data)
+
+    change_pose()
 
     print("\n" + "=" * 50)
     print("  POSE RANDOM GO1 (senza ripetizioni)")
