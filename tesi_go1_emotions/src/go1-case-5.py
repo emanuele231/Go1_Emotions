@@ -11,6 +11,17 @@ import termios
 import tty
 import select
 
+import warnings
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import glfw
+import tkinter as tk
+
+import threading
+
 # Serviranno nell'inserimento dei form
 RED = "\033[91m"
 GREEN = "\033[92m"
@@ -69,6 +80,13 @@ neutral_stand_pose = np.array([
     0.0,  0.9, -1.5
 ])
 
+QUESTIONNAIRE_URLS = {
+    "happy": "https://docs.google.com/forms/d/e/1FAIpQLSclrKO2td2GGwyfTvxMZb4yfjvqax2lBumu0yKvyTgSbB8ntA/viewform?usp=header",
+    "angry": "https://docs.google.com/forms/d/e/1FAIpQLSfR3GPUBwC0hUZvjtNZlsn4ensScybFFtRck00P59Qfcgu5Yg/viewform?usp=header",
+    "playful": "https://docs.google.com/forms/d/e/1FAIpQLScg1iNH2TpVyuj3UwFmAFp5xChuRAknJCUI4vTkCKOxqzPKgQ/viewform?usp=header",
+    "sad": "https://docs.google.com/forms/d/e/1FAIpQLSeEfZAdyQBlPn0bg2WFa5IJ8MSDqXBTEXhHzXQMKJsIbTrpDQ/viewform?usp=header"
+}
+
 # ============================================================
 # STATO E CODA POSE
 # ============================================================
@@ -86,6 +104,14 @@ print(f"[INFO] Ordine casuale delle pose")
 pose_count = 0          
 MAX_POSES = 5         
 simulation_finished = False  
+questionnaire_opened = False
+is_questionnaire_open = False
+pause_start_time = 0.0  
+
+pose_ready_time = None
+POSE_DISPLAY_DURATION = 10.0
+
+emotion_to_question = None  
 
 KP = 20.0
 KD = 0.0
@@ -103,16 +129,21 @@ def update_headlights(color):
             model.geom_rgba[geom_id] = color
 
 def controller(data, model):
-    global current_pose, transition_start_time
+    global current_pose, transition_start_time, pose_ready_time
     
     if transition_start_time is not None:
         elapsed = time.perf_counter() - transition_start_time
         t = min(elapsed / TRANSITION_DURATION, 1.0)
         t_smooth = smoothstep(t)
         current_pose = start_pose + t_smooth * (target_pose - start_pose)
+        
         if t >= 1.0:
             transition_start_time = None
-            print(f"\r{GREEN}PRONTO!{RESET}    ", end="", flush=True)
+            pose_ready_time = time.perf_counter()
+            
+            if is_questionnaire_open:
+                pause_start_time = time.perf_counter()
+                print(f"\r{GREEN}PRONTO!{RESET}    ", end="", flush=True)
     else:
         current_pose = target_pose.copy()
     
@@ -123,22 +154,87 @@ def controller(data, model):
         data.ctrl[i] = KP * (target_q - current_q) + KD * (0.0 - current_dq)
 
 # ============================================================
+# DOMANDA 
+# ============================================================
+def disegna_testo(viewer, testo, x, y, z):
+    scn = viewer.user_scn
+    scn.ngeom = 0
+    if scn.ngeom < scn.maxgeom:
+        geom = scn.geoms[scn.ngeom]
+        geom.type = mujoco.mjtGeom.mjGEOM_LABEL
+        geom.pos[:] = [x, y, z]
+        geom.label = testo
+        scn.ngeom += 1
+        
+
+# ============================================================
+# QUESTIONARIO
+# ============================================================
+def apri_questionario(emotion):
+    global is_questionnaire_open, pause_start_time, pose_ready_time
+    
+    warnings.filterwarnings("ignore")
+    if emotion not in QUESTIONNAIRE_URLS:
+        return
+
+    FORM_URL = QUESTIONNAIRE_URLS[emotion]
+    print(f"\n[INFO] Apertura del questionario per '{emotion}'...")
+
+    is_questionnaire_open = True
+    pause_start_time = time.perf_counter()
+
+    options = webdriver.ChromeOptions()
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+
+    try:
+        driver.get(FORM_URL)
+        
+        root = tk.Tk()
+        root.withdraw()
+        screen_width = root.winfo_screenwidth()
+        screen_height = root.winfo_screenheight()
+        root.destroy()
+        
+        width = 1500
+        height = 1400
+        x = (screen_width // 2) + 1000
+        y = (screen_height - height) // 2
+        
+        driver.set_window_rect(x, y, width, height)
+        
+        WebDriverWait(driver, 300).until(EC.url_contains('formResponse'))
+        print(f"[INFO] Questionario '{emotion}' inviato! Chiusura automatica tra 3 secondi...")
+        time.sleep(3)
+    except Exception as e:
+        print(f"\n[ERRORE] Si è verificato un problema: {e}")
+    finally:
+        driver.quit()
+        is_questionnaire_open = False
+        if pose_ready_time is not None:
+            pose_ready_time += (time.perf_counter() - pause_start_time)
+
+# ============================================================
 # CAMBIO POSA
 # ============================================================
 def change_pose():
-    global current_emotion, target_pose, start_pose, pose_count, simulation_finished, transition_start_time
+    global current_emotion, target_pose, start_pose, pose_count, simulation_finished, transition_start_time, pose_ready_time, emotion_to_question
+    
+    # Salviamo l'emozione appena conclusa prima di sovrascriverla
+    emotion_to_question = current_emotion
+    
+    pose_ready_time = None
     
     if not pose_queue:
         print("\n[TUTTE LE POSE SONO STATE MOSTRATE]")
-        simulation_finished = True
         return
     
     start_pose = current_pose.copy()
-    
+
+    # --- LOGICA FARI IN BASE ALL'EMOZIONE ---
     current_emotion = pose_queue.pop()
     target_pose = poses[current_emotion].copy()
     pose_count += 1
-
+    
     # --- LOGICA FARI IN BASE ALL'EMOZIONE ---
     if current_emotion == "sad":
         update_headlights([0.0, 0.0, 0.0, 0.0])
@@ -148,8 +244,10 @@ def change_pose():
         update_headlights([1.0, 0.0, 0.0, 1.0])
     
     transition_start_time = time.perf_counter()
-    print(f"\r[{time.strftime('%H:%M:%S')}] >>> Posa {pose_count}/{MAX_POSES-1}: {current_emotion.upper()}    ", end="", flush=True)
     print(f"\r{RED}UN ATTIMO!{RESET}    ", end="", flush=True)
+    
+    if emotion_to_question in QUESTIONNAIRE_URLS:
+        threading.Thread(target=apri_questionario, args=(emotion_to_question,), daemon=True).start()
 
     if pose_count >= MAX_POSES:
         simulation_finished = True
@@ -174,28 +272,33 @@ try:
 
     change_pose()
 
-    print("\n" + "=" * 50)
-    print("  POSE RANDOM GO1 (senza ripetizioni)")
-    print(f"  Mostra {MAX_POSES-1} pose casuali, poi termina")
-    print("  Premi [P] nel TERMINALE per la prossima posa")
-    print("=" * 50)
 
     # ============================================================
     # LOOP PRINCIPALE
     # ============================================================
+    glfw.init()
+    glfw.window_hint(glfw.MAXIMIZED, glfw.TRUE)
+    
     with mujoco.viewer.launch_passive(model, data) as viewer:
         viewer.cam.distance = 2.0
         viewer.cam.lookat[:] = [0.35, 0.0, 0.35]
-        viewer.cam.azimuth = 180.0
+        viewer.cam.azimuth = 175.0
         viewer.cam.elevation = -10.0
         
         while viewer.is_running() and not simulation_finished:
             step_start = time.perf_counter()
             
-            # --- LETTURA TASTO ---
-            key = get_key()
-            if key and key.lower() == 'p':
-                change_pose()
+            # --- TIMER AUTOMATICO ---
+            if pose_ready_time is not None and not is_questionnaire_open:
+                if time.perf_counter() - pose_ready_time >= POSE_DISPLAY_DURATION:
+                    if not pose_queue:
+                        apri_questionario(current_emotion)
+                        simulation_finished = True
+                    else:
+                        change_pose()
+            
+            # Disegna il messaggio sopra il robot (asse Z positivo)
+            disegna_testo(viewer, "Adesso il robot esprimera' delle emozioni con una posa. Secondo te cosa sta esprimendo!", 0.0, -1.0, 0.8)
             
             # --- FISICA E RENDERING ---
             controller(data, model)
