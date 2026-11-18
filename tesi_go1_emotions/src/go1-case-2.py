@@ -95,7 +95,7 @@ target_pose = neutral_stand_pose.copy()
 current_pose = neutral_stand_pose.copy()
 start_pose = neutral_stand_pose.copy()
 transition_start_time = time.perf_counter()
-TRANSITION_DURATION = 3.0
+TRANSITION_DURATION = 4.0
 
 pose_queue = list(poses.keys())
 random.shuffle(pose_queue)
@@ -156,14 +156,14 @@ def controller(data, model):
 # ============================================================
 # DOMANDA 
 # ============================================================
-def disegna_testo(viewer, testo, x, y, z):
+def disegna_testo(viewer, testo, x, y, z, colore=(1, 1, 1, 1)):
     scn = viewer.user_scn
-    scn.ngeom = 0
     if scn.ngeom < scn.maxgeom:
         geom = scn.geoms[scn.ngeom]
         geom.type = mujoco.mjtGeom.mjGEOM_LABEL
         geom.pos[:] = [x, y, z]
         geom.label = testo
+        geom.rgba = [*colore]
         scn.ngeom += 1
         
 
@@ -295,7 +295,11 @@ try:
                         change_pose()
             
             # Disegna il messaggio sopra il robot (asse Z positivo)
-            disegna_testo(viewer, "Adesso il robot esprimera' delle emozioni con una posa. Secondo te cosa sta esprimendo!", 0.0, -1.0, 0.8)
+            viewer.user_scn.ngeom = 0
+            if transition_start_time is not None:
+                disegna_testo(viewer, "Attendi, il robot si sta posizionando!", 0.0, -0.4, 0.2, (1.0, 0.2, 0.2, 1.0))
+            else:
+                disegna_testo(viewer, "Secondo te cosa sta esprimendo il robot?", -0.4, -1.0, 0.8, (1.0, 1.0, 1.0, 1.0))
             
             # --- FISICA E RENDERING ---
             controller(data, model)
