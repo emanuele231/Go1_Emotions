@@ -10,8 +10,18 @@ import sys
 import termios
 import tty
 import select
+import warnings
+import threading
+import tkinter as tk
+import glfw
+import os
 import cv2
-import math
+
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 RED = "\033[91m"
 GREEN = "\033[92m"
@@ -92,6 +102,13 @@ neutral_stand_pose = np.array([
     0.0,  0.9, -2.0
 ])
 
+QUESTIONNAIRE_URLS = { 
+    "happy": "https://docs.google.com/forms/d/e/1FAIpQLSekNQLFPD-pbIr_RBd3CkZ8FszXX1Sn5kqWvYwBIrAfLRUCtA/viewform?usp=header",
+    "angry": "https://docs.google.com/forms/d/e/1FAIpQLSdpi1IVDpyuTSLhRmJ22xQ--01VzAO5y4Ne9SZ40csShhsjmw/viewform?usp=header",
+    "playful": "https://docs.google.com/forms/d/e/1FAIpQLScyST0qpo3vMnqsMjt_gXpXQ0xZi0EYYScOCa146xMwwf9x_w/viewform?usp=header",
+    "sad": "https://docs.google.com/forms/d/e/1FAIpQLSdThGQke7AKJDuANuFWIdy6aGL0Lp2jcpvJ6gEliQhKXqDf1A/viewform?usp=header"
+}
+
 # ============================================================
 # STATO E CODA POSE
 # ============================================================
@@ -101,7 +118,7 @@ current_animation = None
 current_pose = neutral_stand_pose.copy()
 start_pose = neutral_stand_pose.copy()
 transition_start_time = None
-TRANSITION_DURATION = 5.0
+TRANSITION_DURATION = 4.0
 
 anim_elapsed = 0.0
 anim_duration = 0.0
@@ -120,6 +137,11 @@ pose_count = 0
 MAX_POSES = 5         
 simulation_finished = False  
 
+pose_ready_time = None
+POSE_DISPLAY_DURATION = 10.0
+is_questionnaire_open = False
+pause_start_time = 0.0
+
 KP = 20.0
 KD = 0.05
 
@@ -137,27 +159,36 @@ def smoothstep(t):
 
 def controller(data, model):
     global current_pose, start_pose, transition_start_time, current_animation
-    global phase, anim_elapsed, anim_duration, anim_keyframes, last_status
+    global phase, anim_elapsed, anim_duration, anim_keyframes
     global target_yaw, last_target_yaw, last_real_time, current_hip_rot
+    global anim_repeats, total_anim_duration, pose_ready_time, is_questionnaire_open
 
     if current_animation is None:
         return
      
-    if phase in ("to_neutral", "to_anim"):
-        status = f"{RED}UN ATTIMO!{RESET}"
-    elif phase in ("animating", "idle"):
-        status = f"{GREEN}PRONTO!{RESET}"
-    else:
-        status = f"{RED}STATO SCONOSCIUTO{RESET}"
-
-    if status != last_status:
-        print(f"\r{status}\033[K", end="", flush=True)
-        last_status = status
-
     current_real_time = time.perf_counter()
     real_dt = current_real_time - last_real_time
     last_real_time = current_real_time
 
+    # --- CALCOLO E STAMPA DEL TIMER DINAMICO (aggiornato a ogni frame) ---
+    if phase in ("to_neutral", "to_anim"):
+        elapsed = current_real_time - transition_start_time if transition_start_time is not None else 0.0
+        
+        if is_questionnaire_open and elapsed >= TRANSITION_DURATION:
+            status = f"{RED}UN ATTIMO! (in attesa...){RESET}"
+        else:
+            status = f"{RED}UN ATTIMO! ({min(elapsed, TRANSITION_DURATION):.1f}s){RESET}"
+            
+    elif phase in ("animating", "idle"):
+        elapsed = current_real_time - pose_ready_time if pose_ready_time is not None else 0.0
+        status = f"{GREEN}PRONTO! ({elapsed:.1f}s){RESET}"
+    else:
+        status = f"{RED}STATO SCONOSCIUTO{RESET}"
+
+    # Stampiamo a ogni frame per far "ticchettare" il timer visivamente
+    print(f"\r{status}\033[K", end="", flush=True)
+
+    # --- FASE 1: Transizione verso neutral o primo keyframe ---
     if phase == "to_neutral" or phase == "to_anim":
         if transition_start_time is None:
             transition_start_time = current_real_time
@@ -175,87 +206,159 @@ def controller(data, model):
         current_pose = start_pose + t_smooth * (target - start_pose)
         
         if t >= 1.0:
-            transition_start_time = None
-            if phase == "to_neutral":
-                phase = "to_anim"
+            if not is_questionnaire_open:
+                transition_start_time = None
+                if phase == "to_neutral":
+                    phase = "to_anim"
+                else:
+                    phase = "animating"
+                    anim_elapsed = 0.0
+                    pose_ready_time = time.perf_counter() # Avvia il timer verde
             else:
-                phase = "animating"
-                anim_elapsed = 0.0
+                current_pose = target.copy()
     
+
     elif phase == "animating":
         anim_elapsed += real_dt
+        cycle_elapsed = anim_elapsed % anim_duration
         
-        if anim_elapsed >= anim_duration:
-            anim_elapsed = anim_duration
+        if anim_elapsed >= total_anim_duration:
+            cycle_elapsed = anim_duration
+            anim_elapsed = total_anim_duration
             current_pose = anim_keyframes[-1].copy()
             phase = "idle"
         else:
             num_frames = len(anim_keyframes)
             segment_duration = anim_duration / (num_frames - 1)
-            idx = int(anim_elapsed / segment_duration)
+            idx = int(cycle_elapsed / segment_duration)
             
             if idx >= num_frames - 1:
                 idx = num_frames - 2
             
-            t = (anim_elapsed - idx * segment_duration) / segment_duration
+            t = (cycle_elapsed - idx * segment_duration) / segment_duration
             t_smooth = smoothstep(t)
             
             frame1 = anim_keyframes[idx]
             frame2 = anim_keyframes[idx + 1]
             current_pose = frame1 + t_smooth * (frame2 - frame1)
 
+    # --- FACE TRACKING: INCLINAZIONE SPALLE ---
     target_yaw_clamped = max(-0.4, min(0.4, target_yaw))
     hip_error = target_yaw_clamped - current_hip_rot
     
     if abs(target_yaw) < 0.01 and abs(hip_error) < 0.01:
         current_hip_rot = 0.0
     else:
-        current_hip_rot += hip_error * 0.03
+        current_hip_rot += hip_error * 0.02
 
     dynamic_pose = current_pose.copy()
 
     dynamic_pose[0] -= current_hip_rot
     dynamic_pose[3] -= current_hip_rot
 
+    # --- CONTROLLO PD ---
     for i in range(model.nu):
         current_q = data.qpos[7 + i]
         current_dq = data.qvel[6 + i]
         target_q = dynamic_pose[i]
         data.ctrl[i] = KP * (target_q - current_q) + KD * (0.0 - current_dq)
+
+# ============================================================
+# QUESTIONARIO
+# ============================================================
+def apri_questionario(emotion):
+    global is_questionnaire_open, pause_start_time, pose_ready_time
+    
+    warnings.filterwarnings("ignore")
+    if emotion not in QUESTIONNAIRE_URLS:
+        return
+
+    FORM_URL = QUESTIONNAIRE_URLS[emotion]
+    print(f"\n[INFO] Apertura del questionario per '{emotion}'...")
+
+    is_questionnaire_open = True
+    pause_start_time = time.perf_counter()
+
+    options = webdriver.ChromeOptions()
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+
+    try:
+        driver.get(FORM_URL)
+        
+        root = tk.Tk()
+        root.withdraw()
+        screen_width = root.winfo_screenwidth()
+        screen_height = root.winfo_screenheight()
+        root.destroy()
+        
+        width = 1500
+        height = 1400
+        x = (screen_width // 2) + 100
+        y = (screen_height - height) // 2
+        
+        driver.set_window_rect(x, y, width, height)
+        
+        WebDriverWait(driver, 300).until(EC.url_contains('formResponse'))
+        print(f"[INFO] Questionario '{emotion}' inviato! Chiusura automatica tra 3 secondi...")
+        time.sleep(3)
+    except Exception as e:
+        print(f"\n[ERRORE] Si è verificato un problema: {e}")
+    finally:
+        driver.quit()
+        is_questionnaire_open = False
+        if pose_ready_time is not None:
+            pose_ready_time += (time.perf_counter() - pause_start_time)
+
+# ============================================================
+# MESSAGGIO SCENA 3D
+# ============================================================
+def disegna_testo(viewer, testo, x, y, z, colore=(1, 1, 1, 1)):
+    scn = viewer.user_scn
+    if scn.ngeom < scn.maxgeom:
+        geom = scn.geoms[scn.ngeom]
+        geom.type = mujoco.mjtGeom.mjGEOM_LABEL
+        geom.pos[:] = [x, y, z]
+        geom.label = testo
+        geom.rgba = [*colore]
+        scn.ngeom += 1
+
 # ============================================================
 # CAMBIO POSA
 # ============================================================
 def change_pose():
     global phase, current_emotion, current_animation, anim_keyframes, anim_duration
     global start_pose, pose_count, simulation_finished, transition_start_time
+    global pose_ready_time, anim_repeats, total_anim_duration
     
+    # 1. Salviamo l'emozione appena conclusa per il questionario
+    emotion_to_question = current_emotion
+    pose_ready_time = None
+    
+    # 2. Se la coda è vuota, usciamo. L'ultimo questionario sarà gestito dal loop principale
     if not pose_queue:
         print("\n[TUTTE LE ANIMAZIONI SONO STATE MOSTRATE]")
-        simulation_finished = True
         return
     
+    start_pose = current_pose.copy()
+    
+    #  Carichiamo la nuova animazione (incluse le ripetizioni)
     current_animation = pose_queue.pop()
     current_emotion = current_animation
     anim_keyframes = animations[current_animation]["keyframes"]
     anim_duration = animations[current_animation]["duration"]
+    anim_repeats = animations[current_animation].get("repeats", 1)
+    total_anim_duration = anim_duration * anim_repeats
     pose_count += 1
     
-    # Gestione luci in base all'emozione
-    if current_emotion == "sad":
-        model.geom_rgba[headlight_left_id] = [0.0, 0.0, 0.0, 0.0]
-        model.geom_rgba[headlight_right_id] = [0.0, 0.0, 0.0, 0.0]
-    elif current_emotion in ("happy", "playful"):
-        model.geom_rgba[headlight_left_id] = [0.0, 0.0, 0.0, 0.0]
-        model.geom_rgba[headlight_right_id] = [0.0, 0.0, 0.0, 0.0]
-    elif current_emotion == "angry": 
-        model.geom_rgba[headlight_left_id] = [0.0, 0.0, 0.0, 0.0]
-        model.geom_rgba[headlight_right_id] = [0.0, 0.0, 0.0, 0.0]
+    model.geom_rgba[headlight_left_id] = [0.0, 0.0, 0.0, 0.0]
+    model.geom_rgba[headlight_right_id] = [0.0, 0.0, 0.0, 0.0]
     
     phase = "to_neutral"
     transition_start_time = None
 
-    if pose_count >= MAX_POSES:
-        simulation_finished = True
+    # Avvia il questionario per l'emozione APPENA CONCLUSA in un thread separato
+    if emotion_to_question in QUESTIONNAIRE_URLS:
+        threading.Thread(target=apri_questionario, args=(emotion_to_question,), daemon=True).start()
 
 # ============================================================
 # CONFIGURAZIONE WEBCAM + YUNET
@@ -301,15 +404,12 @@ try:
 
     change_pose()
 
-    print("\n" + "=" * 50)
-    print("  ANIMAZIONI RANDOM + FACE TRACKING")
-    print(f"  Mostra {MAX_POSES-1} animazioni casuali")
-    print("  Premi [P] nel TERMINALE per la prossima animazione")
-    print("=" * 50)
-
     # ============================================================
     # LOOP PRINCIPALE
     # ============================================================
+    glfw.init()
+    glfw.window_hint(glfw.MAXIMIZED, glfw.TRUE)
+    
     tracking_activation_time = time.perf_counter() + 3.0
     
     with mujoco.viewer.launch_passive(model, data) as viewer:
@@ -322,10 +422,15 @@ try:
             step_start = time.perf_counter()
             current_time = time.time()
             
-            # --- LETTURA TASTO ---
-            key = get_key()
-            if key and key.lower() == 'p':
-                change_pose()
+             # --- TIMER AUTOMATICO ---
+            if pose_ready_time is not None and not is_questionnaire_open:
+                if time.perf_counter() - pose_ready_time >= POSE_DISPLAY_DURATION:
+                    if not pose_queue:
+                        apri_questionario(current_emotion) # Ultimo questionario
+                        simulation_finished = True
+                    else:
+                        change_pose()
+           
             
             # --- FACE TRACKING ---
             if current_time - last_vision_time > VISION_INTERVAL:
@@ -360,7 +465,7 @@ try:
                             if abs(offset) <= 50:
                                 target_yaw = 0.0
                             else:
-                                target_yaw = -(offset / 50.0) * 0.15
+                                target_yaw = -(offset / 50.0) * 0.12
                             
                             cv2.line(frame, (cx, cy), (fx, cy), (0, 255, 0), 2)
                             cv2.circle(frame, (fx, cy), 4, (0, 255, 0), -1)
@@ -372,6 +477,17 @@ try:
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
+                
+            # --- MESSAGGIO NELLA SCENA 3D ---
+            viewer.user_scn.ngeom = 0
+            disegna_testo(viewer, "Secondo te cosa sta esprimendo il robot?", 0.0, -1.0, 0.8)
+            disegna_testo(viewer, "Lui ti sta guardando...", -0.3, -1.0, 0.7)
+            
+            if phase in ("to_neutral", "to_anim"):
+                disegna_testo(viewer, "Attendi, il robot si sta posizionando!", 1.9, -0.1, 0.6, (1.0, 0.2, 0.2, 1.0))
+
+            mujoco.mj_step(model, data)
+            viewer.sync()
             
             # --- FISICA E RENDERING ---
             controller(data, model)
