@@ -5,9 +5,9 @@ import time
 import os
 
 CASI_DISPONIBILI = [
-    "go1-case-01.py", "go1-case-02.py", "go1-case-03.py", "go1-case-04.py",
-    "go1-case-05.py", "go1-case-06.py", "go1-case-07.py", "go1-case-08.py",
-    "go1-case-09.py", "go1-case-10.py", "go1-case-11.py", "go1-case-12.py",
+    "go1-case-1.py", "go1-case-2.py", "go1-case-3.py", "go1-case-4.py",
+    "go1-case-5.py", "go1-case-6.py", "go1-case-7.py", "go1-case-8.py",
+    "go1-case-9.py", "go1-case-10.py", "go1-case-11.py", "go1-case-12.py",
     "go1-case-13.py", "go1-case-14.py", "go1-case-15.py", "go1-case-16.py",
     "go1-case-17.py", "go1-case-18.py"
 ]

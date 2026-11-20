@@ -1,4 +1,4 @@
-# Dinamico-OL, Luci-off, Closed-World + Questionari
+# Dinamico-OL, Luci-off, Closed-World + Questionari (Fase Verde + Luci Spente in Transizione)
 
 import mujoco
 import mujoco.viewer
@@ -34,6 +34,11 @@ print(f"Caricamento: {model_path}")
 model = mujoco.MjModel.from_xml_path(model_path)
 data = mujoco.MjData(model)
 model.opt.iterations = 200
+
+# Salviamo i colori originali delle luci della scena
+luci_diffuse_originali = model.light_diffuse.copy()
+luci_ambient_originali = model.light_ambient.copy()
+
 headlight_left_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, 'headlight_left')
 headlight_right_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, 'headlight_right')
 if headlight_left_id == -1 or headlight_right_id == -1:
@@ -144,6 +149,8 @@ pose_ready_time = None
 POSE_DISPLAY_DURATION = 10.0
 is_questionnaire_open = False
 pause_start_time = 0.0
+questionnaire_launched = False
+user_submitted = False  
 
 def smoothstep(t):
     t = np.clip(t, 0.0, 1.0)
@@ -153,7 +160,7 @@ def smoothstep(t):
 # QUESTIONARIO
 # ============================================================
 def apri_questionario(emotion):
-    global is_questionnaire_open, pause_start_time, pose_ready_time
+    global is_questionnaire_open, pause_start_time, pose_ready_time, user_submitted
     
     warnings.filterwarnings("ignore")
     if emotion not in QUESTIONNAIRE_URLS:
@@ -177,14 +184,16 @@ def apri_questionario(emotion):
         screen_height = root.winfo_screenheight()
         root.destroy()
         
-        width = 1500
-        height = 1400
+        width = 700
+        height = 800
         x = (screen_width // 2) + 100
         y = (screen_height - height) // 2
         
         driver.set_window_rect(x, y, width, height)
         
         WebDriverWait(driver, 300).until(EC.url_contains('formResponse'))
+        
+        user_submitted = True  # <-- SEGNA CHE L'UTENTE HA RISPOSTO
         print(f"[INFO] Questionario '{emotion}' inviato! Chiusura automatica tra 3 secondi...")
         time.sleep(3)
     except Exception as e:
@@ -214,7 +223,7 @@ def disegna_testo(viewer, testo, x, y, z, colore=(1, 1, 1, 1)):
 def controller(data, model):
     global current_pose, start_pose, transition_start_time, current_animation
     global phase, anim_elapsed, anim_duration, anim_keyframes
-    global anim_repeats, total_anim_duration, pose_ready_time
+    global anim_repeats, total_anim_duration, pose_ready_time, questionnaire_launched
 
     if current_animation is None:
         return
@@ -224,13 +233,7 @@ def controller(data, model):
     # --- CALCOLO E STAMPA DEL TIMER DINAMICO ---
     if phase in ("to_neutral", "to_anim"):
         elapsed = current_real_time - transition_start_time if transition_start_time is not None else 0.0
-        
-        # Se la transizione è finita ma il questionario è ancora aperto, mostriamo "in attesa..."
-        if is_questionnaire_open and elapsed >= TRANSITION_DURATION:
-            status = f"{RED}UN ATTIMO! (in attesa...){RESET}"
-        else:
-            status = f"{RED}UN ATTIMO! ({min(elapsed, TRANSITION_DURATION):.1f}s){RESET}"
-            
+        status = f"{RED}UN ATTIMO! ({min(elapsed, TRANSITION_DURATION):.1f}s){RESET}"
     elif phase in ("animating", "idle"):
         elapsed = current_real_time - pose_ready_time if pose_ready_time is not None else 0.0
         status = f"{GREEN}PRONTO! ({elapsed:.1f}s){RESET}"
@@ -257,17 +260,12 @@ def controller(data, model):
         current_pose = start_pose + t_smooth * (target - start_pose)
         
         if t >= 1.0:
-            # CONTROLLO CRUCIALE: procedi solo se il questionario NON è aperto
-            if not is_questionnaire_open:
-                transition_start_time = None
-                if phase == "to_neutral":
-                    phase = "to_anim"
-                else:
-                    phase = "animating"
-                    anim_elapsed = 0.0
+            transition_start_time = None
+            if phase == "to_neutral":
+                phase = "to_anim"
             else:
-                # Se il questionario è aperto, congela il robot esattamente alla posa target
-                current_pose = target.copy()
+                phase = "animating"
+                anim_elapsed = 0.0
     
     # --- FASE 2: Animazione con ripetizioni ---
     elif phase == "animating":
@@ -282,6 +280,10 @@ def controller(data, model):
             
             if pose_ready_time is None:
                 pose_ready_time = time.perf_counter()
+                # Lancia il questionario SOLO quando entra nella fase verde (idle)
+                if not questionnaire_launched and current_emotion in QUESTIONNAIRE_URLS:
+                    questionnaire_launched = True
+                    threading.Thread(target=apri_questionario, args=(current_emotion,), daemon=True).start()
         else:
             num_frames = len(anim_keyframes)
             segment_duration = anim_duration / (num_frames - 1)
@@ -310,15 +312,15 @@ def controller(data, model):
 def change_pose():
     global phase, current_emotion, current_animation, anim_keyframes, anim_duration
     global start_pose, pose_count, simulation_finished, transition_start_time
-    global anim_repeats, total_anim_duration, pose_ready_time
+    global anim_repeats, total_anim_duration, pose_ready_time, questionnaire_launched, user_submitted
     
-    # Salviamo l'emozione appena conclusa
-    emotion_to_question = current_emotion
+    # Resetta i flag per la nuova emozione
+    questionnaire_launched = False
+    user_submitted = False
     pose_ready_time = None
     
     if not pose_queue:
         print("\n[TUTTE LE ANIMAZIONI SONO STATE MOSTRATE]")
-        # L'ultimo questionario verrà gestito dal timer nel loop principale
         return
     
     start_pose = current_pose.copy()
@@ -337,8 +339,6 @@ def change_pose():
     phase = "to_neutral"
     transition_start_time = None
 
-    if emotion_to_question in QUESTIONNAIRE_URLS:
-        threading.Thread(target=apri_questionario, args=(emotion_to_question,), daemon=True).start()
 # ============================================================
 # LETTURA TASTO DAL TERMINALE
 # ============================================================
@@ -362,7 +362,7 @@ try:
     print("\n" + "=" * 50)
     print("  ANIMAZIONI RANDOM GO1 + QUESTIONARI")
     print(f"  Mostra {MAX_POSES-1} animazioni casuali")
-    print("  Timer automatico: 10 secondi per posa")
+    print("  Timer automatico: 10 secondi per posa (saltabile)")
     print("=" * 50)
 
     # ============================================================
@@ -371,38 +371,42 @@ try:
     glfw.init()
     glfw.window_hint(glfw.MAXIMIZED, glfw.TRUE)
     
-    with mujoco.viewer.launch_passive(model, data) as viewer:
+    with mujoco.viewer.launch_passive(model, data, show_left_ui=False, show_right_ui=False) as viewer:
         viewer.cam.distance = 2.0
         viewer.cam.lookat[:] = [0.35, 0.0, 0.35]
         viewer.cam.azimuth = 180.0
         viewer.cam.elevation = -10.0
         
-        # Schermo intero
-        glfw.init()
-        glfw.window_hint(glfw.MAXIMIZED, glfw.TRUE)
-        
         while viewer.is_running() and not simulation_finished:
             step_start = time.perf_counter()
             
-            # --- TIMER AUTOMATICO ---
-            if pose_ready_time is not None and not is_questionnaire_open:
-                if time.perf_counter() - pose_ready_time >= POSE_DISPLAY_DURATION:
+            # --- TIMER AUTOMATICO (Salta se l'utente ha inviato) ---
+            if pose_ready_time is not None:
+                tempo_trascorso = time.perf_counter() - pose_ready_time
+                if tempo_trascorso >= POSE_DISPLAY_DURATION or user_submitted:
                     if not pose_queue:
-                        apri_questionario(current_emotion)
-                        simulation_finished = True
+                        if not is_questionnaire_open:
+                            simulation_finished = True
                     else:
-                        change_pose()
+                        if not is_questionnaire_open:
+                            change_pose()
             
-            # --- FISICA E RENDERING ---
-            controller(data, model)
-
             # --- MESSAGGIO NELLA SCENA 3D ---
             viewer.user_scn.ngeom = 0
-            disegna_testo(viewer, "Secondo te cosa sta esprimendo il robot?", 0.0, -1.0, 0.8)
-            
             if phase in ("to_neutral", "to_anim"):
                 disegna_testo(viewer, "Attendi, il robot si sta posizionando!", 1.9, -0.1, 0.6, (1.0, 0.2, 0.2, 1.0))
 
+            # --- GESTIONE LUCI SCENA (Spente in transizione) ---
+            if phase in ("to_neutral", "to_anim"):
+                for i in range(model.nlight):
+                    model.light_diffuse[i] = [0.0, 0.0, 0.0]
+                    model.light_ambient[i] = [0.0, 0.0, 0.0]
+            else:
+                model.light_diffuse[:] = luci_diffuse_originali
+                model.light_ambient[:] = luci_ambient_originali
+            
+            # --- FISICA E RENDERING ---
+            controller(data, model)
             mujoco.mj_step(model, data)
             viewer.sync()
             
