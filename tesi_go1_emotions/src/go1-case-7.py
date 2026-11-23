@@ -359,11 +359,6 @@ try:
 
     change_pose()
 
-    print("\n" + "=" * 50)
-    print("  ANIMAZIONI RANDOM GO1 + QUESTIONARI")
-    print(f"  Mostra {MAX_POSES-1} animazioni casuali")
-    print("  Timer automatico: 10 secondi per posa (saltabile)")
-    print("=" * 50)
 
     # ============================================================
     # LOOP PRINCIPALE
@@ -374,7 +369,7 @@ try:
     with mujoco.viewer.launch_passive(model, data, show_left_ui=False, show_right_ui=False) as viewer:
         viewer.cam.distance = 2.0
         viewer.cam.lookat[:] = [0.35, 0.0, 0.35]
-        viewer.cam.azimuth = 180.0
+        viewer.cam.azimuth = 175.0
         viewer.cam.elevation = -10.0
         
         while viewer.is_running() and not simulation_finished:

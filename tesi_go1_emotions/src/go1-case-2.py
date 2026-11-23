@@ -85,7 +85,7 @@ simulation_finished = False
 is_questionnaire_open = False
 pause_start_time = 0.0  
 questionnaire_launched = False
-user_submitted = False  # <-- AGGIUNTO
+user_submitted = False  
 
 pose_ready_time = None
 POSE_DISPLAY_DURATION = 10.0
@@ -195,6 +195,7 @@ def change_pose():
     global current_emotion, target_pose, start_pose, pose_count, simulation_finished, transition_start_time, pose_ready_time, questionnaire_launched, user_submitted
     
     # Resetta i flag per la nuova emozione
+    emotion_to_question = current_emotion
     questionnaire_launched = False
     user_submitted = False
     pose_ready_time = None
@@ -221,6 +222,7 @@ def change_pose():
 
     if pose_count >= MAX_POSES:
         simulation_finished = True
+        
 
 def get_key():
     if select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], []):
