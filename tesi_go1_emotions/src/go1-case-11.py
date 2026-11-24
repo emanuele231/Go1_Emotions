@@ -385,10 +385,10 @@ try:
     glfw.window_hint(glfw.MAXIMIZED, glfw.TRUE)
     
     with mujoco.viewer.launch_passive(model, data, show_left_ui=False, show_right_ui=False) as viewer:
-        viewer.cam.distance = 2.0
+        viewer.cam.distance = 1.4
         viewer.cam.lookat[:] = [0.35, 0.0, 0.35]
         viewer.cam.azimuth = 175.0
-        viewer.cam.elevation = -10.0
+        viewer.cam.elevation = -45.0
         
         while viewer.is_running() and not simulation_finished:
             step_start = time.perf_counter()
