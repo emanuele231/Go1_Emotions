@@ -179,7 +179,7 @@ def apri_questionario(emotion):
         return
 
     FORM_URL = QUESTIONNAIRE_URLS[emotion]
-    print(f"\n[INFO] Apertura del questionario per '{emotion}'...")
+    print(f"\n[INFO] Apertura del questionario ...")
 
     is_questionnaire_open = True
     pause_start_time = time.perf_counter()
@@ -206,7 +206,7 @@ def apri_questionario(emotion):
         WebDriverWait(driver, 300).until(EC.url_contains('formResponse'))
         
         user_submitted = True
-        print(f"[INFO] Questionario '{emotion}' inviato! Chiusura automatica tra 3 secondi...")
+        print(f"[INFO] Questionario  inviato! Chiusura automatica tra 3 secondi...")
         time.sleep(3)
     except Exception as e:
         print(f"\n[ERRORE] Si è verificato un problema: {e}")
